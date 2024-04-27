@@ -1,0 +1,472 @@
+---
+title: "Méthodes micro-économétriques - Contrôle Continu"
+author: "Charbel AHOUANDOKOUN,Nazifou AFOLABI, Youssef DIR "
+date: "15 février, 2023"
+output:
+  pdf_document:
+header-includes:
+  - \usepackage{fancyhdr}
+  - \usepackage{graphicx}
+  - \pagestyle{fancy}
+  - \fancyhead{}
+  - \fancyfoot[C]{\thepage}
+  - \fancyfoot[R]{\textbf{\large Mécen 1}}
+  - \fancyfoot[L]{\textbf{\large Méthodes micro-économétriques}}
+geometry:
+  margin=1.5cm
+fontsize: 11pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, 
+                      warning = FALSE)
+```
+
+
+```{r Packages}
+library(haven)
+library(tidyverse)
+library(knitr)
+library(kableExtra)
+library(stargazer)
+library(plm)
+library(lmtest)
+library(foreign)
+library(caschrono)
+library(forecast)
+library(astsa)
+```
+
+```{r Fonctions}
+Resumé <- function(data) {
+  stats <- sapply(data, summary)
+  stats_table <- (stats)
+  row.names(stats_table) <- c("Min", "1er Quartile", "Médiane", "Moyenne", "3è Quartile", "Max")
+  return(t(stats_table))
+}
+
+
+Tableau <- function(data, Bof) {
+  table <- kable(data,caption=Bof)
+  table %>%
+    kable_styling(latex_options = c("striped", "hold_position"),position="center") %>%
+    add_header_above(c(" " = 1, "Statistiques descriptives" = ncol(data)))
+  return(table)
+}
+
+```
+
+```{r}
+setwd("~/1 MECEN/micro econometrie/PROJET MICRO-ECONOMETRIE")
+```
+
+
+```{r Importation}
+data<- read_dta("data_V3.dta")
+data$sex<-as_factor(data$sex)
+data$workev<-as_factor(data$workev)
+data$himcare<-as_factor(data$himcare)
+data$hinotcov<-as_factor(data$hinotcov)
+data$year<-as.factor(data$year)
+Quanti<-c(2,4,6,9)
+Quali<-c(3,5,7,8)
+```
+
+# Exercice 1
+
+# 1- Importance de l'analyse:
+
+En microéconomie, l'analyse des déterminants des dépenses en soins dentaires peut aider à comprendre les comportements de consommation et les décisions des ménages en matière de soins dentaires. Cela peut avoir des intérêts divers et variés tels que:
+
+- Déterminer les segments de marché et les profils des consommateurs pour les soins dentaires, ce qui peut être utile pour les professionnels de la santé pour cibler leur marketing et leur offre de services.
+
+- Évaluer les effets des politiques publiques sur les dépenses en soins dentaires, telles que les réglementations, les incitations fiscales et les subventions pour les soins de santé.
+
+- Étudier les inégalités de santé et les disparités en matière d'accès aux soins dentaires, y compris les différences en matière d'âge, de revenu et de niveau d'éducation.
+
+- L'étude des régimes d'assurance santé peut montrer comment ils influencent les décisions de consommation des ménages en matière de soins dentaires en termes de coût et de couverture.
+
+En conclusion, l'analyse des déterminants des dépenses en soins dentaires en microéconomie peut fournir une compréhension plus approfondie des comportements des consommateurs et des décisions des ménages en matière de soins dentaires. Cela peut être utile pour les professionnels de la santé pour cibler leur marketing et leur offre de services, ainsi que pour les décideurs politiques pour élaborer des politiques publiques efficaces en matière de soins de santé qui encouragent un accès abordable et une qualité élevée des soins dentaires pour les consommateurs.
+
+
+# 2- Tableaux de statistiques descriptives.
+ 
+```{r}
+Tableau(Resumé(data[,Quanti]),"Statistiques descriptives variables quantitatives")
+```
+
+
+```{r, include=FALSE}
+
+# Liste des variables à résummer
+var_list <- c("age","educyr","inctot","dvexptot")
+
+# Initialiser un data.frame pour stocker les résultats
+results <- data.frame(variable = character(), mean = numeric(),
+                      sd = numeric(), Q1 = numeric(),
+                      median = numeric(), Q3 = numeric(),
+                      year = integer(), stringsAsFactors = FALSE)
+
+# Boucle à travers les variables et les années
+for (v in var_list) {
+  for (y in unique(data$year)) {
+    year_data <- data[data$year == y, ]
+    var_mean <- mean(year_data[[v]])
+    var_sd <- sd(year_data[[v]])
+    var_quantiles <- quantile(year_data[[v]], c(0.25, 0.5, 0.75))
+    results <- rbind(results, data.frame(variable = v, mean = var_mean,
+                                        sd = var_sd, Q1 = var_quantiles[1],
+                                        median = var_quantiles[2], Q3 = var_quantiles[3],
+                                        year = y, stringsAsFactors = FALSE))
+  }
+}
+
+# Afficher le tableau résumé
+kable(results, caption = "Résumé des données panel par année et variable(Variables quantitatives)")
+
+```
+
+
+```{r, include=FALSE}
+A=table(data$sex[data$year==2015]) #%>% addmargins()
+B=table(data$sex[data$year==2016]) #%>% addmargins()
+C=table(data$sex[data$year==2017]) #%>% addmargins()
+D=table(data$sex[data$year==2018]) #%>% addmargins()
+E=table(data$sex[data$year==2019]) #%>% addmargins()
+Table1=as.matrix(rbind(A,B,C,D,E))
+row.names(Table1)=c("2015","2016","2017","2018","2019")
+colnames(Table1)=c("Homme","Femme")
+Table1 %>%
+kable(caption="Répartition de la variable Sex par année") %>%
+    kable_styling(latex_options = c("striped", "hold_position"),position="center") %>%
+    add_header_above(c("Années"=1,"Répartition"=2),bold=T)
+
+```
+
+```{r, include=FALSE}
+A=table(data$workev[data$year==2015]) #%>% addmargins()
+B=table(data$workev[data$year==2016]) #%>% addmargins()
+C=table(data$workev[data$year==2017]) #%>% addmargins()
+D=table(data$workev[data$year==2018]) #%>% addmargins()
+E=table(data$workev[data$year==2019]) #%>% addmargins()
+Table2=as.matrix(rbind(A,B,C,D,E))
+row.names(Table2)=c("2015","2016","2017","2018","2019")
+colnames(Table2)=c("Non","Oui","SR","NV","Ne sait pas")
+Table2 %>%
+kable(caption="Répartition de la variable Workev par année") %>%
+    kable_styling(latex_options = c("striped", "hold_position"),position="center") %>%
+    add_header_above(c("Années"=1,"A déjà travaillé"=5),bold=T)
+
+```
+
+
+
+
+```{r, include=FALSE}
+A=table(data$hinotcov[data$year==2015]) #%>% addmargins()
+B=table(data$hinotcov[data$year==2016]) #%>% addmargins()
+C=table(data$hinotcov[data$year==2017]) #%>% addmargins()
+D=table(data$hinotcov[data$year==2018]) #%>% addmargins()
+E=table(data$hinotcov[data$year==2019]) #%>% addmargins()
+Table3=as.matrix(rbind(A,B,C,D,E))
+row.names(Table3)=c("2015","2016","2017","2018","2019")
+colnames(Table3)=c("Non","Oui")
+Table3 %>%
+kable(caption="Répartition de la variable hinotcov par année") %>%
+    kable_styling(latex_options = c("striped", "hold_position"),position="center") %>%
+    add_header_above(c("Années"=1,"Sans assurance santé"=2),bold=T)
+
+```
+
+```{r, include=FALSE}
+A=table(data$himcare[data$year==2015]) %>% addmargins()
+B=table(data$himcare[data$year==2016]) %>% addmargins()
+C=table(data$himcare[data$year==2017]) %>% addmargins()
+D=table(data$himcare[data$year==2018]) %>% addmargins()
+E=table(data$himcare[data$year==2019]) %>% addmargins()
+Table4=as.matrix(rbind(A,B,C,D,E))
+row.names(Table4)=c("2015","2016","2017","2018","2019")
+colnames(Table4)=c("Non","Oui","Total")
+Table4 %>%
+kable(caption="Répartition de la variable himcare par année") %>%
+    kable_styling(latex_options = c("striped", "hold_position"),position="center") %>%
+    add_header_above(c("Années"=1,"Bénéficiaire Medicare"=2," "=1),bold=T)
+
+```
+
+```{r}
+TABLE<-cbind(Table1,Table2,Table3,Table4)
+TABLE %>% kable(caption="Fréquence des variables qualitatives par année") %>%
+    kable_styling(latex_options = c("striped", "hold_position"),position="center",full_width =F )%>% 
+      add_header_above(c("Années"=1, "Sex"=2,"hinotcov"=2,"workev"=5,"himcare"=2," "=1),bold=T)
+```
+
+## Commentaire: 
+ 
+- SR(Sans réponse): A refusé de répondre
+- NV: Non vérifié.
+
+La colonne total du deuxième tableau montre que le nombre d'individus a diminué au fil des années. Il y a sûrement là un problème d'attrition. $\textbf{Notre panel n'est donc pas cylindré}$.
+  
+  
+# 3- Modèle poolé:
+
+```{r, results='asis',include=FALSE}
+reg0<-lm(dvexptot~age+sex+educyr+inctot+workev+himcare+hinotcov,data)
+reg1<-plm(dvexptot~age+sex+educyr+inctot+workev+himcare+hinotcov,data,model="pooling",index=c("id","year"))
+#summary(reg0)
+#summary(reg1)
+#coeftest(reg1)
+#stargazer(reg1, title="Modèle poolé")
+#coeftest(reg1, vcov=vcovHC(reg1, method="arellano")) 
+cov1<-vcovHC(reg1, method="arellano")
+robust_se1<-sqrt(diag(cov1))
+stargazer(reg1, title="Modèle poolé avec écarts-type corrigés",se=list(robust_se1))
+```
+
+ Les coefficients interprétés se retrouvent dans la $Table 6$ de l'annexe.
+ Tous les coefficients sont significatifs contrairement aux MCO simple. 
+ 
+ - 1,9% de la variabilité des dépenses en soins dentaires est expliquée par le modèle.
+ 
+ - Grandir d'un an diminue les dépenses en soins dentaires d'un individu de 0.184.
+ 
+ - Etre de sexe féminin augmente en moyenne les dépenses annuelles dentaires de 76,39 par rapport aux hommes.
+ 
+ - Une année d'étude supplémentaire diminue les dépenses de 0,43 pour un individu.
+ 
+ - Le revenu total personnel a un effet marginal annuel positif même si très faible(0,003) sur les dépenses annuelles en soin dentaire.
+ 
+ - Les individus qui ont déjà travaillé ont en moyenne une dépense annuelle en soin dentaire plus élevé que les autres enquêtés; ceux qui ne savent pas ont les moins élevées.
+ 
+ - Avoir la couverture medicare augmente les dépenses annuelles en soins dentaire de 178,188 en moyenne par rapport aux individus sans cette couverture.
+ 
+ - Les individus n'ayant aucune assurance santé ont une dépense annuelle en soins dentaire moins élevé par rapport aux individus ayant au moins une assurance.
+ 
+# 4- Modèle à erreurs composées:
+
+```{r, results='asis',include=FALSE}
+reg2 <- plm(dvexptot~age+sex+educyr+inctot+workev+himcare+hinotcov,data, model="random", effect="individual", index=c("id","year"))
+cov2<-vcovHC(reg2, method="arellano")
+robust_se2<-sqrt(diag(cov2))
+stargazer(reg2, title="Random effect avec écarts-type corrigés",se=list(robust_se2))
+```
+   Sur la base de la $Table 6$, on constate que les coefficients et les écarts-types ont été ajustés mais les premiers cités conservent les mêmes signes que ceux estimés dans le modèle précédent: les relations n'ont pas changés même si leurs forces ont plus ou moins diminuées. Cela est dû au fait que le modèle poolé contrairement au modèle random ne pondère pas les observations par l'information portée par ces dernières. Il avait donc tendance à sur-estimer(sous-estimer) les effets des régresseurs sur les dépenses en soins dentaires, ce qui avait conduit à des coefficients et écarts-types pas forcément optimaux.
+   
+   
+# 5- Comparaison:
+```{r, results='asis',include=FALSE}
+stargazer(reg0,reg1,reg2, title="Les 3 modèles",column.labels=c("MCO","Poolé","Random"),se=list(summary(reg0)$coefficients[, "Std. Error"],robust_se1,robust_se2))
+```
+
+  Les modèles MCO et Poolé ont les mêmes coefficients mais des écarts-types différents. Cela est du fait de la structure non sphériques des erreurs du modèle, probablement due à une variable manquante ou aux valeurs plutôt aberrantes de la variable educyr, qui font que les écarts-types estimés par les MCO ne sont pas corrects. En plus des différences relevées à la question précédente, il faut ajouter que des 3 modèles, le modèle à erreurs composées à la F-statistique la plus élevée.
+  
+# 6- Modèle à effets fixes individuels:
+
+```{r, results='asis',include=FALSE}
+reg3 <- plm(dvexptot~age+sex+educyr+inctot+workev+himcare+hinotcov,data, model="within", effect="individual", index=c("id","year"))
+#coeftest(reg3, vcov=vcovHC(reg3, method="arellano"))
+cov3<-vcovHC(reg3, method="arellano")
+robust_se3<-sqrt(diag(cov3))
+#stargazer(fixed_effect, title="Fixed Effect Model with standard error correction",se=list(robust_se3))
+stargazer(reg1,reg2,reg3,column.labels=c("Poolé","Random effect", "fixed effect"), title="Three models",se=list(robust_se1,robust_se2,robust_se3))
+```
+  $\textbf{Le coefficient associé à la variable educyr n'a pas été estimé car ce dernier est fixe dans le temps}$. Seules les variables sex,inctot, workev8 et himcare2 ont un effet sur les dépenses en soins dentaires.
+  Aussi, certains liens entre les régresseurs et les dépenses en soins dentaires ont changé de sens:
+  
+  - Etre de sexe féminin diminue les dépenses en soins dentaires de 39.013 par rapports à la dépense moyenne.
+
+# 7- Choix du modèle entre fixed et random:
+Choisir le meilleur modèle revient à vérifier la présence d'une hétérogénéité individuelle corrélée aux variables explicatives de notre modèle. Nous utiliserons ici le test Haussmann. Avec les hypothèses suivantes:
+
+  - $H_0$ : les deux modèles sont convergents, l'estimateur du random effect est plus efficace.
+  
+  - $H_1$ : le modèle à effets fixe est meilleur que celui à effets aléatoires.
+
+```{r, include=FALSE}
+Hauss<-phtest(reg3, reg2, data = base, method = "aux", vcov = vcovHC)
+```
+La p-value du test (`r Hauss$p.value`) étant inférieur à 0.05 on rejette $H_0$, le modèle à effets fixes est à privilégier.
+
+
+# 8- Choix du meilleur de nos modèles:
+   De toutes les comparaisons précédentes et de la question 7, on choisira le modèle à effets fixes.
+   
+# 9- Explication des facteurs des dépenses en soins dentaires:
+  - Etre de sexe féminin diminue les dépenses en soins dentaires de 39.013 par rapport à la dépense moyenne en soins  de l'individu.
+  - Une augmentation d'une unité du revenu personnel d'un individu par rapport à la moyenne de son revenu, entraîne une augmentation de 0.001 de ses dépenses en soins dentaires par rapport à sa moyenne de dépenses en soins dentaires sur la durée de l'enquête.
+  - Avoir la couverture medicare, augmente les dépenses en soins dentaires de 229.546 par rapport à la dépense moyenne en soins de l’individu.
+
+# 10- Valeurs aberrantes:
+
+Oui, pour certains individus le nombre d'années d'études est supérieur à l'âge ou encore certains présentent un revenu total personnel négatif ce qui n'est pas possible car il s'agit du revenu et non du patrimoine ou la trésorerie. 
+Les régressions faites par en excluant valeurs sont présentes en annexe.
+On constate une augmentation en générale des écarts-types( diminution néanmoins sur certains) et une modifications de la force du lien entre les dépenses en soins dentaires et les variables de notre modèle. En particulier pour le modèle à effets fixes, les coefficients des variables $Sex$ et $workev8$ ne sont pas significatifs contrairement au modèle avec la base de départ tandis que celui de $workev9$ a subi l'effet inverse.
+```{r}
+base<-data[data$age>data$educyr & data$inctot>0,]
+```
+
+\newpage
+# Exercice 2
+
+# 1- Simulation:
+
+L'équation est celle d'un processus ARMA(1,1) ou ARIMA(1,0,1).
+
+```{r, results='asis', fig.height=4}
+set.seed(1)
+fit <-arima.sim(list(ar=0.5, ma=0.6), n= 200)
+plot(fit)
+```
+
+# 2- Fonction d’autocorrélation et fonction d’autocorrélation partielle: 
+```{r, fig.height=4}
+acf2y(fit, 20,numer = FALSE)
+```
+
+## Commentaire:
+ - $ACF$: on remarque une oscillation même si elle n'est pas régulière, cela indique la présence d'une composante $\textbf{moyenne mobile}$; Le dernier pic significatif est au lag 3.
+ 
+ - $PACF$: il y a un pic significatif au niveau du lag 10, il y a donc une autocorrelation partielle au lag 10. 
+ - La $PACF$ et l'$ACF$ nous font penser à une $MA(3)$ et une $AR(10)$, ce qui n'est pas raccord avec l'équation. $\textbf{Il faudra donc procéder à des ajusments}$
+
+# 3- Ajustements: 
+
+## a- Un ARMA(1,1)
+
+```{r}
+ARMA11 <- arima(fit, order=c(1,0,1))
+Res11<- ARMA11$residuals
+```
+
+```{r, results='asis'}
+stargazer(ARMA11,font.size = "tiny",title="ARMA(1,1)",header=FALSE)
+```
+
+## b- Un AR(1)
+
+```{r}
+AR1<- arima(fit, order=c(1,0,0))
+ResAR1<- AR1$residuals
+```
+
+```{r, results='asis'}
+stargazer(AR1,font.size = "tiny",title="AR(1)",header=FALSE)
+```
+## c- Un MA(1)
+
+```{r}
+MA1 <- arima(fit, order=c(0,0,1))
+ResMA1<- MA1$residuals
+```
+
+```{r, results='asis'}
+stargazer(MA1,font.size = "tiny",title="MA(1)",header=FALSE)
+```
+\newpage
+# 4- Nature des résidus pour chaque modèle:
+
+Ici, on fait un box test (test de blancheur) sur les résidus (BB).
+
+ - $H_0$:les  résidus sont des Bruit Blanc
+ 
+ - $H_1$:les  résidus ne sont pas des Bruit Blanc 
+
+Règle de décision : si p-value < 0.05 On rejette $H_0$ 
+
+## a- residus ARMA (1,1):
+
+```{r, fig.height=3}
+acf2y(Res11,numer = FALSE)
+```
+
+```{r}
+BT<-Box.test(Res11)
+```
+
+On a un p-value de `r round(BT$p.value,3)`, au test de blancheur, supérieur au seuil de 0.05; on ne rejette pas $H_0$  donc les résidus sont des Bruits Blancs.
+
+## b- residus AR(1):
+
+```{r, fig.height=3}
+acf2y(ResAR1,numer = FALSE)
+```
+
+```{r}
+BT<-Box.test(ResAR1)
+```
+
+La p-value du test de blancheur (`r round(BT$p.value,3)`) est inférieur à 0.05, on  rejette $H_0$, les résidus ne sont donc pas des Bruits Blancs.
+
+
+## c- residus MA(1):
+
+```{r, fig.height=3}
+acf2y(ResMA1,numer = FALSE)
+```
+
+```{r}
+BT<-Box.test(ResMA1)
+```
+
+La p-value du test de blancheur (`r round(BT$p.value,3)`) est inférieur à 0.05, on  rejette $H_0$, les résidus ne sont donc pas des Bruits Blancs.
+
+## Conclusion: 
+Seul le ARMA(1,1) a des residus qui sont des Bruits Blancs.
+
+# 5- Autre critère de décision : 
+
+L'autre critère pour le choix de modèle est l'AIC. L'AIC (Akaike information criterion) est un critère de sélection de modèle qui est utilisé pour évaluer la qualité d'un modèle statistique par rapport à d'autres modèles. Plus précisément, l'AIC est une mesure du trade-off entre la précision du modèle (capturée par la qualité de la déviation des données observées par rapport aux données prévues) et la complexité du modèle (capturée par le nombre de paramètres du modèle). Elle mesure donc la perte de précision du modèle du fait de sa complexité.
+
+
+## Principe:
+On choisit le modèle ayant l'AIC le plus faible. 
+
+## Choix:  
+
+```{r}
+AIC<-as.matrix(c(ARMA11$aic,AR1$aic,MA1$aic))
+AIC<-t(AIC)
+colnames(AIC)<-c("ARMA","AR","MA")
+rownames(AIC)<-"AIC"
+AIC %>% kable() %>% 
+    kable_styling(latex_options = c("striped", "hold_position"),position="center") %>%
+    add_header_above(c(" "=1,"Récapitulatif des AIC de nos 3 modèles"=3))
+```
+
+ Dans notre cas le choix porte sur le modèle ARMA(1,1) car il a l'AIC le plus faible.
+ 
+# Cohérence du choix:
+
+Oui, il y a un cohérence entre le modèle ARMA(1,1) choisit  et le modèle de la question 1 car l'équation de la question 1 est celle d'un ARMA(1,1).
+ 
+\newpage
+# Annexe:
+
+```{r, results='asis'}
+stargazer(reg0,reg1,reg2, title="Questions 3-4-5",column.labels=c("MCO","Poolé","Random"),se=list(summary(reg0)$coefficients[, "Std. Error"],robust_se1,robust_se2),header = FALSE)
+```
+
+```{r, results='asis'}
+stargazer(reg2,reg3,column.labels=c("Random effect", "fixed effect"), title="Random effects et fixed effects (Question 6)",se=list(robust_se2,robust_se3),header = FALSE)
+```
+
+
+```{r, results='asis'}
+reg0<-lm(dvexptot~age+sex+educyr+inctot+workev+himcare+hinotcov,base)
+
+reg1<-plm(dvexptot~age+sex+educyr+inctot+workev+himcare+hinotcov,base,model="pooling",index=c("id","year"))
+cov1<-vcovHC(reg1, method="arellano")
+robust_se1<-sqrt(diag(cov1))
+
+reg2 <- plm(dvexptot~age+sex+educyr+inctot+workev+himcare+hinotcov,base, model="random", effect="individual", index=c("id","year"))
+cov2<-vcovHC(reg2, method="arellano")
+robust_se2<-sqrt(diag(cov2))
+
+reg3 <- plm(dvexptot~age+sex+educyr+inctot+workev+himcare+hinotcov,base, model="within", effect="individual", index=c("id","year"))
+cov3<-vcovHC(reg3, method="arellano")
+robust_se3<-sqrt(diag(cov3))
+
+
+stargazer(reg0,reg1,reg2,reg3, title="Les 4 modèles avec la base nettoyée",column.labels=c("MCO","Poolé","Random effect","Fixed effect"),se=list(summary(reg0)$coefficients[, "Std. Error"],robust_se1,robust_se2,robust_se3),font.size = "tiny",header = FALSE)
+```
